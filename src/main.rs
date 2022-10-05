@@ -3,9 +3,8 @@ mod cf_access_jwt;
 mod facebook;
 mod test_endpoints;
 
+use actix_redis::RedisActor;
 use actix_web::{middleware, web, App, HttpServer};
-
-type RedisPool = r2d2::Pool<redis::Client>;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -34,18 +33,16 @@ async fn main() -> std::io::Result<()> {
     let mongo_client = mongodb::Client::with_uri_str(&env.mongodb_url)
         .await
         .unwrap_or_else(|_| panic!("Failed to connect to MongoDB at {}", &env.mongodb_url));
-    let redis_client = redis::Client::open((env.redis_url).to_string())
-        .unwrap_or_else(|_| panic!("Failed to connect to Redis at {}", &env.redis_url));
-
-    let redis_connection_pool: RedisPool = r2d2::Pool::new(redis_client).unwrap();
 
     log::info!("starting HTTP server at 0.0.0.0:8080");
 
     HttpServer::new(move || {
+        let redis = RedisActor::start(&env.redis_url);
+
         App::new()
             .app_data(web::Data::new(env.to_owned()))
             .app_data(web::Data::new(mongo_client.clone()))
-            .app_data(web::Data::new(redis_connection_pool.clone()))
+            .app_data(web::Data::new(redis))
             .wrap(sentry_actix::Sentry::new())
             .wrap(middleware::DefaultHeaders::new().add(("X-Powered-By", "rainbows and shit")))
             .wrap(cf_access_jwt::CFAccessJWT)

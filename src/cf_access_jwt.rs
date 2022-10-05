@@ -1,9 +1,10 @@
 use crate::app_environment;
 
 use actix_web::{
+    body::EitherBody,
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     http::header,
-    Error, HttpMessage,
+    Error, HttpMessage, HttpResponse,
 };
 use jsonwebtoken::{
     decode, decode_header,
@@ -89,7 +90,7 @@ where
     S::Future: 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type InitError = ();
     type Transform = CFAccessJWTMiddleware<S>;
@@ -108,33 +109,41 @@ pub struct CFAccessJWTMiddleware<S> {
 
 impl<S, B> Service<ServiceRequest> for CFAccessJWTMiddleware<S>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     forward_ready!(service);
 
-    fn call(&self, req: ServiceRequest) -> Self::Future {
-        let service = Rc::clone(&self.service);
+    fn call(&self, svc_request: ServiceRequest) -> Self::Future {
+        let cf_access_jwt_assertion = match svc_request
+            .headers()
+            .to_owned()
+            .get("cf-access-jwt-assertion")
+        {
+            Some(assertion) => assertion.to_str().unwrap(),
+            None => {
+                let (request, _pl) = svc_request.into_parts();
+                let response = HttpResponse::InternalServerError()
+                    .body("No CF Access JWT provided!")
+                    .map_into_right_body();
 
-        //TODO: any error here explodes the app, and that probably shouldn't happen!
+                return Box::pin(async { Ok(ServiceResponse::new(request, response)) });
+            }
+        };
+
+        let res = self.service.call(svc_request);
+
         Box::pin(async move {
-            let cf_access_jwt_assertion = req
-                .headers()
-                .get("cf-access-jwt-assertion")
-                .expect("No JWT!");
+            let token = decode_jwt(cf_access_jwt_assertion).await;
 
-            let token = decode_jwt(cf_access_jwt_assertion.to_str().unwrap()).await;
+            svc_request.extensions_mut().insert(token.unwrap().claims);
 
-            req.extensions_mut().insert(token.unwrap().claims);
-
-            let res = service.call(req).await?;
-
-            Ok(res)
+            res.await.map(ServiceResponse::map_into_left_body)
         })
     }
 }

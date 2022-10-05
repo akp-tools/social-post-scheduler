@@ -1,20 +1,20 @@
 mod models;
 
-use crate::{
-    app_environment::AppEnvironment, cf_access_jwt::Claims, facebook::models::*, RedisPool,
-};
+use crate::{app_environment::AppEnvironment, cf_access_jwt::Claims, facebook::models::*};
 
-use actix_web::{get, http::header, web, HttpResponse, Responder};
+use actix::Addr;
+use actix_redis::{Command, RedisActor};
+use actix_web::{error, get, http::header, web, HttpResponse};
 use rand::distributions::{Alphanumeric, DistString};
-use redis::Commands;
+use redis_async::{resp::RespValue, resp_array};
 use url::Url;
 
 #[get("/api/v1/login/facebook")]
 async fn facebook_login(
     env: web::Data<AppEnvironment>,
-    redis: web::Data<RedisPool>,
+    redis: web::Data<Addr<RedisActor>>,
     claims: web::ReqData<Claims>,
-) -> impl Responder {
+) -> actix_web::Result<HttpResponse> {
     let claims = claims.into_inner();
 
     let redirect_url = match Url::parse(&env.base_url) {
@@ -22,16 +22,25 @@ async fn facebook_login(
             url.set_path("/api/v1/redirect/facebook");
             url.to_string()
         }
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
     let state = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
+    let redis_key = format!("fb_state+{}", &claims.email);
 
-    redis
-        .get()
-        .expect("oops")
-        .set::<String, String, String>(format!("fb_state+{}", &claims.email), state.clone())
-        .expect("couldn't set state in redis!");
+    let res = redis
+        .send(Command(resp_array!["SET", redis_key, &state]))
+        .await
+        .map_err(error::ErrorInternalServerError)?
+        .map_err(error::ErrorInternalServerError)?;
+
+    match res {
+        RespValue::SimpleString(x) if x == "OK" => true,
+        _ => {
+            log::error!("{res:?}");
+            return Ok(HttpResponse::InternalServerError().finish());
+        }
+    };
 
     let facebook_query_params = &[
         ("client_id", &env.facebook_client_id),
@@ -45,30 +54,42 @@ async fn facebook_login(
         facebook_query_params,
     ) {
         Ok(url) => url.to_string(),
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
-    HttpResponse::TemporaryRedirect()
+    Ok(HttpResponse::TemporaryRedirect()
         .append_header((header::LOCATION, facebook_base_url))
-        .finish()
+        .finish())
 }
 
 #[get("/api/v1/redirect/facebook")]
 async fn facebook_redirect(
     query: web::Query<FacebookRedirect>,
     env: web::Data<AppEnvironment>,
-    redis: web::Data<RedisPool>,
+    redis: web::Data<Addr<RedisActor>>,
     claims: web::ReqData<Claims>,
-) -> impl Responder {
+) -> actix_web::Result<HttpResponse> {
     let claims = claims.into_inner();
-    let expected_state = redis
-        .get()
-        .expect("oops!")
-        .get::<String, String>(format!("fb_state+{}", &claims.email))
-        .expect("Could not get expected state from redis!");
+    let redis_key = format!("fb_state+{}", &claims.email);
+
+    let res = redis
+        .send(Command(resp_array!["GET", redis_key]))
+        .await
+        .map_err(error::ErrorInternalServerError)?
+        .map_err(error::ErrorInternalServerError)?;
+
+    let expected_state = match res {
+        RespValue::BulkString(x) => {
+            String::from_utf8(x).map_err(error::ErrorInternalServerError)?
+        }
+        _ => {
+            log::error!("{res:?}");
+            return Ok(HttpResponse::InternalServerError().finish());
+        }
+    };
 
     if query.state != expected_state {
-        return HttpResponse::InternalServerError().finish();
+        return Ok(HttpResponse::InternalServerError().finish());
     }
 
     let redirect_url = match Url::parse(&env.base_url) {
@@ -76,7 +97,7 @@ async fn facebook_redirect(
             url.set_path("/api/v1/redirect/facebook");
             url.to_string()
         }
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
     let facebook_query_params = &[
@@ -91,7 +112,7 @@ async fn facebook_redirect(
         facebook_query_params,
     ) {
         Ok(url) => url.to_string(),
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
     let client = awc::Client::default();
@@ -102,24 +123,24 @@ async fn facebook_redirect(
 
     let mut response = match request.send().await {
         Ok(response) => response,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
     let access_token = match response.json::<FacebookAccessToken>().await {
         Ok(token) => token,
         Err(_) => {
-            return HttpResponse::TemporaryRedirect()
+            return Ok(HttpResponse::TemporaryRedirect()
                 .append_header((
                     header::LOCATION,
                     format!("{}/api/v1/login/facebook", &env.base_url),
                 ))
-                .finish()
+                .finish())
         }
     };
 
     let result = match serde_json::to_string(&access_token) {
         Ok(json) => json,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
     let facebook_debug_token_query = &[
@@ -138,7 +159,7 @@ async fn facebook_redirect(
         facebook_debug_token_query,
     ) {
         Ok(url) => url.to_string(),
-        Err(_) => return HttpResponse::InternalServerError().body("failed debug token url"),
+        Err(_) => return Ok(HttpResponse::InternalServerError().body("failed debug token url")),
     };
 
     let debug_request = client
@@ -148,8 +169,8 @@ async fn facebook_redirect(
     let mut debug_response = match debug_request.send().await {
         Ok(response) => response,
         Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("failed debug request send, {}", e))
+            return Ok(HttpResponse::InternalServerError()
+                .body(format!("failed debug request send, {}", e)))
         }
     };
 
@@ -159,7 +180,7 @@ async fn facebook_redirect(
     .unwrap();
 
     // TODO: store all this info in the database
-    HttpResponse::Ok()
+    Ok(HttpResponse::Ok()
         .append_header((header::CONTENT_TYPE, "application/json"))
-        .body(result)
+        .body(result))
 }
