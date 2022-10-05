@@ -149,7 +149,7 @@ async fn facebook_redirect(
         Ok(response) => response,
         Err(e) => {
             return HttpResponse::InternalServerError()
-                .body(format!("failed debug request send, {}", e.to_string()))
+                .body(format!("failed debug request send, {}", e))
         }
     };
 

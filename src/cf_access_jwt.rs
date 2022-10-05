@@ -42,12 +42,10 @@ pub async fn get_public_keys() -> JwkSet {
         .await
         .expect("Couldn't connect to CF Access Keys URL!");
 
-    let keys = response
+    response
         .json::<JwkSet>()
         .await
-        .expect("Failed to parse JwkSet!");
-
-    keys
+        .expect("Failed to parse JwkSet!")
 }
 
 pub async fn decode_jwt(token: &str) -> Result<TokenData<Claims>, &str> {
@@ -62,7 +60,7 @@ pub async fn decode_jwt(token: &str) -> Result<TokenData<Claims>, &str> {
     };
 
     if let Some(j) = jwks.find(&kid) {
-        return Ok(match j.algorithm {
+        Ok(match j.algorithm {
             AlgorithmParameters::RSA(ref rsa) => {
                 let decoding_key = DecodingKey::from_rsa_components(&rsa.n, &rsa.e).unwrap();
                 let mut validation = Validation::new(j.common.algorithm.unwrap());
@@ -77,9 +75,9 @@ pub async fn decode_jwt(token: &str) -> Result<TokenData<Claims>, &str> {
                 decoded
             }
             _ => unreachable!("JWT algorithm should be RSA!"),
-        });
+        })
     } else {
-        return Err("Couldn't find a key to decode the token!");
+        Err("Couldn't find a key to decode the token!")
     }
 }
 

@@ -4,7 +4,6 @@ mod facebook;
 mod test_endpoints;
 
 use actix_web::{middleware, web, App, HttpServer};
-use tokio;
 
 type RedisPool = r2d2::Pool<redis::Client>;
 
@@ -17,7 +16,7 @@ async fn main() -> std::io::Result<()> {
         Err(e) => panic!("{}", e),
     };
 
-    if &env.sentry_dsn.as_str().chars().count() > &0 {
+    if env.sentry_dsn.as_str().chars().count() > 0 {
         // Sentry setup
         let _guard = sentry::init((
             env.sentry_dsn.as_str(),
@@ -34,12 +33,9 @@ async fn main() -> std::io::Result<()> {
 
     let mongo_client = mongodb::Client::with_uri_str(&env.mongodb_url)
         .await
-        .expect(&format!(
-            "Failed to connect to MongoDB at {}",
-            &env.mongodb_url
-        ));
-    let redis_client = redis::Client::open((&env.redis_url).to_string())
-        .expect(&format!("Failed to connect to Redis at {}", &env.redis_url));
+        .unwrap_or_else(|_| panic!("Failed to connect to MongoDB at {}", &env.mongodb_url));
+    let redis_client = redis::Client::open((env.redis_url).to_string())
+        .unwrap_or_else(|_| panic!("Failed to connect to Redis at {}", &env.redis_url));
 
     let redis_connection_pool: RedisPool = r2d2::Pool::new(redis_client).unwrap();
 
