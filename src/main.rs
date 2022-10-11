@@ -1,13 +1,25 @@
 mod app_environment;
-mod cf_access_jwt;
 mod facebook;
+mod fairings;
+mod guards;
+mod jwt;
+mod responders;
 mod test_endpoints;
 
-use actix_redis::RedisActor;
-use actix_web::{middleware, web, App, HttpServer};
+#[macro_use]
+extern crate rocket;
 
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
+use rocket::{Build, Rocket};
+use rocket_db_pools::Database;
+use rocket_sentry::RocketSentry;
+
+#[get("/")]
+fn index() -> String {
+    String::from("neat")
+}
+
+#[launch]
+async fn rocket() -> Rocket<Build> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     let env = match app_environment::get() {
@@ -15,46 +27,30 @@ async fn main() -> std::io::Result<()> {
         Err(e) => panic!("{}", e),
     };
 
-    if env.sentry_dsn.as_str().chars().count() > 0 {
-        // Sentry setup
-        let _guard = sentry::init((
-            env.sentry_dsn.as_str(),
-            sentry::ClientOptions {
-                release: sentry::release_name!(),
-                session_mode: sentry::SessionMode::Request,
-                auto_session_tracking: true,
-                ..Default::default()
-            },
-        ));
-    }
+    static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
-    std::env::set_var("RUST_BACKTRACE", "1");
+    let client = reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())
+        .expect("failed to create reqwest client!");
 
-    let mongo_client = mongodb::Client::with_uri_str(&env.mongodb_url)
-        .await
-        .unwrap_or_else(|_| panic!("Failed to connect to MongoDB at {}", &env.mongodb_url));
-
-    log::info!("starting HTTP server at 0.0.0.0:8080");
-
-    HttpServer::new(move || {
-        let redis = RedisActor::start(&env.redis_url);
-
-        App::new()
-            .app_data(web::Data::new(env.to_owned()))
-            .app_data(web::Data::new(mongo_client.clone()))
-            .app_data(web::Data::new(redis))
-            .wrap(sentry_actix::Sentry::new())
-            .wrap(middleware::DefaultHeaders::new().add(("X-Powered-By", "rainbows and shit")))
-            .wrap(cf_access_jwt::CFAccessJWT)
-            // enable logging - always register logger middleware last
-            .wrap(middleware::Logger::default())
-            .service(test_endpoints::mongo_test)
-            .service(test_endpoints::redis_test)
-            .service(test_endpoints::cf_access_test)
-            .service(facebook::facebook_login)
-            .service(facebook::facebook_redirect)
-    })
-    .bind(("0.0.0.0", 8080))?
-    .run()
-    .await
+    rocket::build()
+        .manage(env)
+        .manage(client)
+        .attach(crate::fairings::custom_headers::CustomHeaders)
+        .attach(crate::fairings::db::RedisPool::init())
+        .attach(crate::fairings::db::MongoDb::init())
+        .attach(RocketSentry::fairing())
+        .mount(
+            "/",
+            routes![
+                index,
+                test_endpoints::mongo_test,
+                test_endpoints::cf_access_test,
+                test_endpoints::redis_test,
+                facebook::facebook_login,
+                facebook::facebook_redirect,
+            ],
+        )
 }

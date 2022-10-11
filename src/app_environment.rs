@@ -7,7 +7,6 @@ pub struct AppEnvironment {
     pub facebook_client_secret: String,
     pub facebook_required_scopes: String,
     pub mongodb_url: String,
-    pub redis_url: String,
     pub sentry_dsn: String,
     pub cf_access_aud: String,
     pub cf_access_team: String,
@@ -27,7 +26,6 @@ pub fn get() -> Result<AppEnvironment, &'static str> {
     );
     let mongodb_url =
         env::var("MONGODB_URL").unwrap_or_else(|_| "mongodb://localhost:27017".into());
-    let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost".into());
     let sentry_dsn = env::var("SENTRY_DSN").unwrap_or_else(|_| "".into());
 
     let cf_access_aud =
@@ -45,7 +43,6 @@ pub fn get() -> Result<AppEnvironment, &'static str> {
         facebook_client_secret,
         facebook_required_scopes,
         mongodb_url,
-        redis_url,
         sentry_dsn,
         cf_access_aud,
         cf_access_team,

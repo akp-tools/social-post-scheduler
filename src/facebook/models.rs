@@ -1,9 +1,12 @@
+use crate::responders::location::LocationResponder;
+
+use rocket::response::Responder;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
-pub struct FacebookRedirect {
-    pub code: String,
-    pub state: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TempResponse {
+    pub access_token: FacebookAccessToken,
+    pub debug_graph: FacebookDebugTokenGraphContainer,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -11,6 +14,18 @@ pub struct FacebookAccessToken {
     pub access_token: String,
     pub token_type: String,
     pub expires_in: u32,
+}
+
+#[derive(Responder)]
+pub enum RedirectResponse<T> {
+    #[response(status = 500)]
+    InternalServerError(&'static str),
+    #[response(status = 400)]
+    Unauthorized(&'static str),
+    #[response(status = 307)]
+    Redirect(LocationResponder),
+    #[response(status = 200)]
+    Ok(T),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
