@@ -1,10 +1,10 @@
+mod api;
 mod app_environment;
-mod facebook;
+mod debug;
 mod fairings;
 mod guards;
 mod jwt;
 mod responders;
-mod test_endpoints;
 
 #[macro_use]
 extern crate rocket;
@@ -41,16 +41,8 @@ async fn rocket() -> Rocket<Build> {
         .attach(crate::fairings::custom_headers::CustomHeaders)
         .attach(crate::fairings::db::RedisPool::init())
         .attach(crate::fairings::db::MongoDb::init())
+        .attach(crate::api::stage())
+        .attach(crate::debug::stage())
         .attach(RocketSentry::fairing())
-        .mount(
-            "/",
-            routes![
-                index,
-                test_endpoints::mongo_test,
-                test_endpoints::cf_access_test,
-                test_endpoints::redis_test,
-                facebook::facebook_login,
-                facebook::facebook_redirect,
-            ],
-        )
+        .mount("/", routes![index])
 }

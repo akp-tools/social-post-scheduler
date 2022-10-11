@@ -1,7 +1,7 @@
 mod models;
 
 use crate::{
-    app_environment::AppEnvironment, facebook::models::*, fairings::db::RedisPool,
+    api::facebook::models::*, app_environment::AppEnvironment, fairings::db::RedisPool,
     jwt::CfAccessJwt, responders::location::LocationResponder,
 };
 use rand::distributions::{Alphanumeric, DistString};
@@ -10,7 +10,7 @@ use rocket::{http::Status, serde::json::Json, State};
 use rocket_db_pools::Connection;
 use url::Url;
 
-#[get("/api/v1/login/facebook")]
+#[get("/login/facebook")]
 pub async fn facebook_login(
     env: &State<AppEnvironment>,
     mut redis: Connection<RedisPool>,
@@ -58,7 +58,7 @@ pub async fn facebook_login(
     })
 }
 
-#[get("/api/v1/redirect/facebook?<code>&<state>")]
+#[get("/redirect/facebook?<code>&<state>")]
 pub async fn facebook_redirect(
     code: Option<String>,
     state: Option<String>,

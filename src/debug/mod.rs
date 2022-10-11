@@ -1,6 +1,4 @@
-use crate::{
-    fairings::db::MongoDb, fairings::db::RedisPool, guards::headers::Headers, jwt::CfAccessJwt,
-};
+use crate::{fairings::db::*, guards::headers::Headers, jwt::CfAccessJwt};
 
 use redis::AsyncCommands;
 use rocket::http::Status;
@@ -36,4 +34,10 @@ pub async fn cf_access_test(headers: Headers<'_>, claims: CfAccessJwt) -> String
     }
 
     format!("{}\n\n\n{:#?}", header_str, claims)
+}
+
+pub fn stage() -> rocket::fairing::AdHoc {
+    rocket::fairing::AdHoc::on_ignite("Debug Endpoints", |rocket| async {
+        rocket.mount("/", routes![mongo_test, redis_test, cf_access_test])
+    })
 }
