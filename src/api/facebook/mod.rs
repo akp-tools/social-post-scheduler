@@ -1,8 +1,11 @@
 mod models;
 
 use crate::{
-    api::facebook::models::*, app_environment::AppEnvironment, fairings::db::RedisPool,
-    jwt::CfAccessJwt, responders::location::LocationResponder,
+    api::facebook::models::*,
+    app_environment::AppEnvironment,
+    fairings::db::{MongoDb, RedisPool},
+    jwt::CfAccessJwt,
+    responders::location::LocationResponder,
 };
 
 use rand::distributions::{Alphanumeric, DistString};
@@ -65,6 +68,7 @@ pub async fn facebook_redirect(
     state: Option<String>,
     env: &State<AppEnvironment>,
     mut redis: Connection<RedisPool>,
+    mongo: Connection<MongoDb>,
     claims: CfAccessJwt,
     http_client: &State<reqwest::Client>,
 ) -> RedirectResponse<Json<TempResponse>> {
@@ -80,17 +84,22 @@ pub async fn facebook_redirect(
 
     let redis_key = format!("fb_state+{}", &claims.email);
 
-    let expected_state: String = match redis.get(redis_key).await {
+    let expected_state: String = match redis.get(redis_key.clone()).await {
         Ok(data) => data,
         Err(e) => {
             log::error!("{e:?}");
-            return RedirectResponse::InternalServerError("failed to get state");
+            return RedirectResponse::Redirect(LocationResponder {
+                location: format!("{}/api/v1/login/facebook", &env.base_url),
+            });
         }
     };
 
     if state != expected_state {
         return RedirectResponse::Unauthorized("");
     }
+
+    // delete the state key now that we've successfully consumed it
+    redis.del::<String, bool>(redis_key.clone()).await.unwrap();
 
     let redirect_url = match Url::parse(&env.base_url) {
         Ok(mut url) => {
@@ -163,9 +172,22 @@ pub async fn facebook_redirect(
     )
     .unwrap();
 
-    // TODO: store all this info in the database
+    // TODO: clean this crap up
+    mongo
+        .database("test")
+        .collection("data")
+        .insert_one(
+            TempResponse {
+                access_token: access_token.clone(),
+                debug_graph: debug_info.clone().data,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
     RedirectResponse::Ok(Json(TempResponse {
         access_token,
-        debug_graph: debug_info,
+        debug_graph: debug_info.data,
     }))
 }
