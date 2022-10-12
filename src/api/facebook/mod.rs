@@ -4,6 +4,7 @@ use crate::{
     api::facebook::models::*, app_environment::AppEnvironment, fairings::db::RedisPool,
     jwt::CfAccessJwt, responders::location::LocationResponder,
 };
+
 use rand::distributions::{Alphanumeric, DistString};
 use redis::AsyncCommands;
 use rocket::{http::Status, serde::json::Json, State};

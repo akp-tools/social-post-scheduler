@@ -18,7 +18,10 @@ impl<'r> FromRequest<'r> for CfAccessJwt {
             None => Outcome::Failure((Status::BadRequest, CfAccessJwtError::Missing)),
             Some(jwt) => match decode_jwt(jwt).await {
                 Ok(token) => Outcome::Success(token.claims),
-                Err(_) => Outcome::Failure((Status::BadRequest, CfAccessJwtError::Invalid)),
+                Err(e) => {
+                    info!("{}", e);
+                    Outcome::Failure((Status::BadRequest, CfAccessJwtError::Invalid))
+                }
             },
         }
     }

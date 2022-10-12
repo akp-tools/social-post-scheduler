@@ -1,3 +1,4 @@
+use crate::jwt::{init_cache, JwkCache};
 use std::env;
 
 #[derive(Clone)]
@@ -11,6 +12,7 @@ pub struct AppEnvironment {
     pub cf_access_aud: String,
     pub cf_access_team: String,
     pub cf_access_certs_url: String,
+    pub jwk_cache: JwkCache,
 }
 
 pub fn get() -> Result<AppEnvironment, &'static str> {
@@ -36,6 +38,7 @@ pub fn get() -> Result<AppEnvironment, &'static str> {
         "https://{}.cloudflareaccess.com/cdn-cgi/access/certs",
         cf_access_team
     );
+    let jwk_cache = init_cache();
 
     Ok(AppEnvironment {
         base_url,
@@ -47,5 +50,6 @@ pub fn get() -> Result<AppEnvironment, &'static str> {
         cf_access_aud,
         cf_access_team,
         cf_access_certs_url,
+        jwk_cache,
     })
 }
