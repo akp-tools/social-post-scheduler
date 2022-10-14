@@ -62,5 +62,13 @@
     "ghcr.io/devcontainers/features/github-cli:1": {
       "version": "latest"
     }
-  }
+},
+"portsAttributes": {
+	"6379": {
+		"label": "redis"
+	},
+	"27017": {
+		"label": "mongo"
+	}
+}
 }

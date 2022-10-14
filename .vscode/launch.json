@@ -7,15 +7,15 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'bufferizer'",
+      "name": "Debug executable 'social-post-scheduler'",
       "cargo": {
         "args": [
           "build",
-          "--bin=bufferizer",
-          "--package=bufferizer"
+          "--bin=social-post-scheduler",
+          "--package=social-post-scheduler"
         ],
         "filter": {
-          "name": "bufferizer",
+          "name": "social-post-scheduler",
           "kind": "bin"
         }
       },
@@ -25,16 +25,16 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'bufferizer'",
+      "name": "Debug unit tests in executable 'social-post-scheduler'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
-          "--bin=bufferizer",
-          "--package=bufferizer"
+          "--bin=social-post-scheduler",
+          "--package=social-post-scheduler"
         ],
         "filter": {
-          "name": "bufferizer",
+          "name": "social-post-scheduler",
           "kind": "bin"
         }
       },
