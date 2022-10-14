@@ -39,13 +39,18 @@
   },
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  "forwardPorts": [8080, 6379, 27017],
+  "forwardPorts": [6379, 27017],
 
   // Use 'postCreateCommand' to run commands after the container is created.
   "postCreateCommand": "rustup default nightly && rustup component add clippy rustfmt && cargo install cargo-watch",
 
   // Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
   "remoteUser": "vscode",
+
+  "settings": {
+    "remote.autoForwardPorts": false
+  },
+
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:1": {
       "version": "latest",
