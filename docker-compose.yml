@@ -24,6 +24,8 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   mongodb_data:
