@@ -3,14 +3,10 @@
 {
   "name": "Rust",
   "build": {
-    "dockerfile": "Dockerfile",
-    "args": {
-      // Use the VARIANT arg to pick a Debian OS version: buster, bullseye
-      // Use bullseye when on local on arm64/Apple Silicon.
-      "VARIANT": "bullseye"
-    }
+    "dockerfile": "Dockerfile"
   },
-  "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
+  "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined", "--cap-add=NET_ADMIN", "--cap-add=NET_RAW", "--device=/dev/net/tun"],
+  "postStartCommand": "sudo /etc/init.d/tailscaled start && docker-compose up -d",
 
   // Configure tool-specific properties.
   "customizations": {
@@ -37,9 +33,6 @@
       ]
     }
   },
-
-  // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  "forwardPorts": [6379, 27017],
 
   // Use 'postCreateCommand' to run commands after the container is created.
   "postCreateCommand": "rustup default nightly && rustup component add clippy rustfmt && cargo install cargo-watch",
